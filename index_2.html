@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador Guardião Florestal - IoT & Blockchain</title>
+    <style>
+        :root {
+            /* Cores mais naturais para a floresta */
+            --forest-green: #228b22; /* Forest Green */
+            --canopy-dark: #1a472a;
+            --fire-color: #e63946;
+            --signal-color: #4cc9f0;
+            --bg-dark: #0d1b2a;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        /* Container para alinhar Grid e Painel Lado a Lado */
+        .main-container {
+            display: flex;
+            flex-direction: row;
+            align-items: flex-start;
+            gap: 30px; /* Espaço entre a grade e o painel */
+            max-width: 1200px;
+        }
+
+        #forest-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 60px); /* Aumentado para acomodar o emoji */
+            grid-template-rows: repeat(8, 60px);
+            gap: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 25px;
+            border-radius: 12px;
+            border: 1px solid #333;
+            cursor: crosshair;
+        }
+
+        .tree-node {
+            width: 60px;
+            height: 60px;
+            background-color: var(--canopy-dark); /* Fundo mais escuro para a copa */
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px; /* Aumentado para o emoji de árvore */
+            transition: all 0.4s ease;
+            position: relative;
+        }
+
+        .tree-node.fire {
+            background-color: var(--fire-color);
+            box-shadow: 0 0 15px var(--fire-color);
+            animation: pulse-fire 1s infinite;
+        }
+
+        .tree-node.alert {
+            border: 2px solid var(--signal-color);
+            box-shadow: 0 0 10px var(--signal-color);
+        }
+
+        .tree-node.transmitting::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 2px solid var(--signal-color);
+            animation: wave 1s ease-out forwards;
+        }
+
+        @keyframes pulse-fire {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes wave {
+            0% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(2.5); opacity: 0; }
+        }
+
+        #status-panel {
+            padding: 20px;
+            background: #1b263b;
+            border-radius: 12px;
+            width: 320px;
+            min-height: 520px; /* Ajustado para a nova altura do grid */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            border: 1px solid #333;
+        }
+
+        .log {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+            color: #a2d2ff;
+            flex-grow: 1;
+            height: 350px; /* Aumentado o log */
+            overflow-y: auto;
+            margin-top: 15px;
+            text-align: left;
+            border-top: 1px solid #333;
+            padding-top: 10px;
+        }
+
+        button {
+            background-color: #415a77;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 15px;
+            font-weight: bold;
+        }
+
+        button:hover { background-color: #778da9; }
+
+        /* Responsividade para telas menores */
+        @media (max-width: 950px) {
+            .main-container {
+                flex-direction: column;
+                align-items: center;
+            }
+            #status-panel {
+                width: 460px;
+                min-height: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Simulador de Propagação IoT - Floresta Tropical</h1>
+        <p>Clique em uma "Árvore Inteligente" (🌳) para simular um foco de incêndio.</p>
+    </header>
+
+    <!-- Container principal -->
+    <div class="main-container">
+        
+        <div id="forest-grid"></div>
+
+        <div id="status-panel">
+            <div>
+                <strong>Status do Sistema:</strong> <br>
+                <span id="system-msg" style="font-size: 1.2em;">Monitoramento Ativo</span>
+            </div>
+            
+            <div id="log-box" class="log"></div>
+            
+            <button onclick="resetForest()">Resetar Floresta</button>
+        </div>
+
+    </div>
+
+    <script>
+        const grid = document.getElementById('forest-grid');
+        const logBox = document.getElementById('log-box');
+        const systemMsg = document.getElementById('system-msg');
+        const size = 8; 
+        let nodes = [];
+
+        function createForest() {
+            grid.innerHTML = '';
+            nodes = [];
+            for (let i = 0; i < size * size; i++) {
+                const node = document.createElement('div');
+                node.classList.add('tree-node');
+                // Alterado de 🌲 (pinheiro) para 🌳 (árvore de folhas largas)
+                node.innerHTML = '🌳'; 
+                node.dataset.index = i;
+                node.onclick = () => startIncident(i);
+                grid.appendChild(node);
+                nodes.push({
+                    element: node,
+                    status: 'healthy',
+                    row: Math.floor(i / size),
+                    col: i % size
+                });
+            }
+        }
+
+        function addLog(msg) {
+            const time = new Date().toLocaleTimeString();
+            logBox.innerHTML = `[${time}] ${msg}<br>` + logBox.innerHTML;
+        }
+
+        function startIncident(index) {
+            if (nodes[index].status !== 'healthy') return;
+
+            addLog("⚠️ Anomalia detectada no Módulo " + index);
+            systemMsg.innerText = "ALERTA: INCÊNDIO DETECTADO";
+            systemMsg.style.color = "#e63946";
+            
+            triggerNode(index, 'fire');
+            propagate(index);
+        }
+
+        function triggerNode(index, type) {
+            const node = nodes[index];
+            node.status = type;
+            node.element.classList.add(type);
+            node.element.classList.add('transmitting');
+            
+            if (type === 'fire') {
+                node.element.innerHTML = '🔥';
+            } else {
+                node.element.innerHTML = '📡';
+            }
+        }
+
+        function propagate(index) {
+            const origin = nodes[index];
+            const neighbors = nodes.filter(n => {
+                const dist = Math.sqrt(Math.pow(n.row - origin.row, 2) + Math.pow(n.col - origin.col, 2));
+                return dist > 0 && dist < 1.5;
+            });
+
+            neighbors.forEach((neighbor, i) => {
+                if (neighbor.status === 'healthy') {
+                    setTimeout(() => {
+                        triggerNode(nodes.indexOf(neighbor), 'alert');
+                        addLog(`Sinal propagado para Nó [${neighbor.row},${neighbor.col}]`);
+                        if (i === 0) addLog("🔗 Hash Blockchain: 0x" + Math.random().toString(16).substr(2, 8));
+                    }, 400 * (i + 1));
+                }
+            });
+        }
+
+        function resetForest() {
+            systemMsg.innerText = "Monitoramento Ativo";
+            systemMsg.style.color = "white";
+            logBox.innerHTML = "";
+            createForest();
+        }
+
+        createForest();
+    </script>
+</body>
+</html>
